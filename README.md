@@ -1,5 +1,5 @@
 # psvdec (formerly known as psvcdc)
-This is a simple CLI based Python program that helps with decrypting the **PFS and eboot.bin encryption** of **PS Vita** content (games, game updates, DLC).<br>
+psvdec is a Python program that decrypts the **PFS and eboot.bin encryption** of **PS Vita** content (games, game updates, DLC).<br>
 
 # Download
 Check out the **[latest release page](https://github.com/rreha/psvdec/releases/latest)**.
@@ -24,10 +24,7 @@ e.g. : `script.py file.pkg` / `script.py [addcont/app/patch]` <br><br>
 # Binary Sources
 ## psvpfsparser
 Windows and Ubuntu binaries were taken from the [psvpfstools release](https://github.com/motoharu-gosuto/psvpfstools/releases/latest).<br/>
-MacOS ARM binary was built by me using [my psvpfstools fork](https://github.com/rreha/psvpfstools).
-
-## PkgDecrypt
-Windows, Ubuntu and MacOS ARM binaries were built from [source](https://github.com/st4rk/PkgDecrypt) using GitHub Actions.
+The MacOS ARM binary was built by me using [my psvpfstools fork](https://github.com/rreha/psvpfstools).
 
 # Credits
 renascene.com for the **[PS Vita Excel Spreadsheet](https://renascene.com/psv/info/card/9999)**.<br>
