@@ -1,19 +1,24 @@
 import os
-import time
 import sys
 import subprocess
 import shutil
 import json
+import urllib.request
+import csv
+import io
+from rich.console import Console
+import platform
+
+console = Console()
 
 def pause_cli():
     if sys.platform.startswith("win32"):
         os.system("pause")
     else:
-        pause = input("Press ENTER to continue...")
+        input("Press ENTER to continue...")
 
 def print_exit(txt):
-    print(txt)
-    print(">    Exiting.")
+    console.print(f"[bold red]{txt}[/bold red]")
     pause_cli()
     if os.path.isdir("./tmp"):
         shutil.rmtree("./tmp")
@@ -26,42 +31,91 @@ def clear_screen():
         os.system("clear")
 
 def psvpfsparser():
+    arch = platform.machine().lower()
+    
     if sys.platform.startswith("win32"):
-        return "./bin/win/psvpfsparser.exe"
+        if arch == "amd64" or arch == "x86_64":
+            return "./bin/win64/psvpfsparser.exe"
+        else:
+            return "./bin/win/psvpfsparser.exe"
+            
+    elif sys.platform.startswith("darwin"):
+        if arch == "arm64" or arch == "aarch64":
+            return "./bin/macarm64/psvpfsparser"
+        else:
+            return "./bin/mac64/psvpfsparser"
+            
     elif sys.platform.startswith("linux"):
         return "./bin/ubuntu64/psvpfsparser"
-    elif sys.platform.startswith("darwin"):
-        return "./bin/macarm64/psvpfsparser"
 
-def get_input():
-    if len(sys.argv) > 1:
-        args_list = []
-        for arg in sys.argv[1:]:
-            args_list.append(arg)
-        print(f">    Got {len(args_list)} input(s).")
+def fetch_nps_database(is_dlc):
+    json_file = "dlc.json" if is_dlc else "games.json"
+    url = "https://nopaystation.com/tsv/PSV_DLCS.tsv" if is_dlc else "https://nopaystation.com/tsv/PSV_GAMES.tsv"
+    
+    console.print(f"[bold yellow]> Missing {json_file}. Downloading latest TSV from NoPayStation...[/bold yellow]")
+    
+    try:
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req) as response:
+            tsv_data = response.read().decode('utf-8')
+            
+        db = {}
+        reader = csv.reader(io.StringIO(tsv_data), delimiter='\t')
+        headers = next(reader)
+        
+        title_id_idx = headers.index('Title ID')
+        zrif_idx = headers.index('zRIF')
+        content_id_idx = headers.index('Content ID') if 'Content ID' in headers else -1
+        
+        for row in reader:
+            if len(row) <= zrif_idx: continue
+            zrif = row[zrif_idx]
+            if not zrif or zrif == "MISSING": continue
+            
+            title_id = row[title_id_idx]
 
-    else:
-        print_exit("/!\\    Please specify a PS Vita .pkg file or a PS Vita folder (addcont/app/patch).")
-    return args_list
+            if is_dlc and content_id_idx != -1 and len(row) > content_id_idx:
+                content_id = row[content_id_idx]
+                dlc_id = content_id.split('-')[-1]
+
+                if title_id not in db:
+                    db[title_id] = {}
+                    
+                db[title_id][dlc_id] = zrif
+            else:
+                db[title_id] = zrif
+                
+        with open(json_file, 'w', encoding='utf-8') as f:
+            json.dump(db, f, indent=4)
+            
+        console.print(f"[bold green]> Successfully converted and saved {json_file}.[/bold green]\n")
+        
+    except Exception as e:
+        print_exit(f"/!\\ Failed to download or parse {url}: {e}")
+
+def ensure_databases():
+    if not os.path.exists("games.json"):
+        fetch_nps_database(is_dlc=False)
+    if not os.path.exists("dlc.json"):
+        fetch_nps_database(is_dlc=True)
 
 def extract_pkg(pkg):
     os.makedirs("./tmp", exist_ok=True)
     subprocess.run([sys.executable, "util/nopkg.py", pkg, "ux", "./tmp/"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    print(">    PKG extracted.")
 
 def detect_content(i):
-    if os.path.basename(i) == "addcont":
-        print(">    DLC (addcont) detected.")
+    basename = os.path.basename(i)
+    if basename == "addcont":
         return True
-    elif os.path.basename(i) == "app":
-        print(">    Game (app) detected.")
-    elif os.path.basename(i) == "patch":
-        print(">    Game Update/Patch (patch) detected.")
+    elif basename in ("app", "patch"):
+        return False
     else:
-        print_exit("/!\\    Couldn't detect content type. Please make sure to specify addcont/app/patch folder instead of game folder (PCSXXXXXX) itself.")
+        return None
 
 def get_content_id(i):
     content_id_list = []
+    if not os.path.isdir(i):
+        return content_id_list
     for folder in os.listdir(i):
         path = os.path.join(i, folder)
         if os.path.isdir(path) and folder.startswith("PCS"):
@@ -73,70 +127,120 @@ def get_dlc_id(i, content_id):
     path = os.path.join(i, content_id)
     if os.path.isdir(path):
         for dlc in os.listdir(path):
-            dlc_path = os.path.join(path, dlc)
-            if os.path.isdir(dlc_path):
+            if os.path.isdir(os.path.join(path, dlc)):
                 dlc_id_list.append(dlc)
     return dlc_id_list
 
-def get_zrif(content_id, is_dlc, dlc_id=None):
-    missing_values = (None, '-', 'MISSING')
+def get_zrif(content_id, is_dlc, status_cb, dlc_id=None):
+    status_cb("Searching zRIF...")
     json_file = "dlc.json" if is_dlc else "games.json"
+    missing_values = (None, '-', 'MISSING')
     
     try:
         with open(json_file, 'r', encoding='utf-8') as f:
             db = json.load(f)
-    except FileNotFoundError:
-        print_exit(f"/!\\    Couldn't find {json_file}.")
-    except json.JSONDecodeError:
-        print_exit(f"/!\\    Couldn't parse {json_file}. Make sure it's valid JSON.")
+    except Exception:
+        status_cb(f"[bold red]Error reading {json_file}[/bold red]")
+        return None
 
-    zrif = db.get(content_id)
+    zrif = None
+
+    if is_dlc and dlc_id:
+        if content_id in db and isinstance(db[content_id], dict):
+            zrif = db[content_id].get(dlc_id)
+        elif dlc_id in db:
+            zrif = db.get(dlc_id)
+    else:
+        zrif = db.get(content_id)
+
+    if isinstance(zrif, str):
+        zrif = zrif.strip()
 
     if zrif and zrif not in missing_values:
-        print(f'>    Found zRIF key ({zrif}).')
         return zrif
     else:
-        print_exit("/!\\    Couldn't find zRIF.")
+        status_cb("[bold red]zRIF key missing from DB[/bold red]")
+        return None
 
-def decrypt_pfs(i, content_id, zrif, dlc_id_list=None, dlc_id=None):
+def decrypt_pfs(i, content_id, zrif, dlc_id=None, status_cb=None, output_dir="./Decrypted"):
     content = os.path.basename(i)
-    os.makedirs("./Decrypted", exist_ok=True)
-    print(">    Decrypting PFS.")
-    if content == "addcont":
-        ret = subprocess.run([psvpfsparser(), "-i", f"{i}/{content_id}/{dlc_id}", "-o", f"./Decrypted/{content}/{content_id}/{dlc_id}", "-z", zrif, "-f", "cma.henkaku.xyz"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-    else:        
-        ret = subprocess.run([psvpfsparser(), "-i", f"{i}/{content_id}", "-o", f"./Decrypted/{content}/{content_id}", "-z", zrif, "-f", "cma.henkaku.xyz"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-    if "invalid" in str(ret):
-        if os.path.isdir("./Decrypted"):
-            shutil.rmtree("./Decrypted")
-        print_exit('/!\\    psvpfsparser returned "header signature is invalid". This DLC CANNOT be decrypted using zRIF.')
-            
-    elif "failed to find unicv.db file or icv.db folder" in str(ret):
-        if os.path.isdir("./Decrypted"):
-            shutil.rmtree("./Decrypted")
-        print_exit('/!\\    psvpfsparser returned "failed to find unicv.db file or icv.db folder". This DLC CANNOT be decrypted using zRIF.')
     
     if content == "addcont":
-        print(f">    Saved decrypted content to Decrypted/{content}/{content_id}/{dlc_id}.")
+        out_path = os.path.join(output_dir, content, content_id, dlc_id)
+        in_path = os.path.join(i, content_id, dlc_id)
+    else:        
+        out_path = os.path.join(output_dir, content, content_id)
+        in_path = os.path.join(i, content_id)
 
-    else:
-        print(f">    Saved decrypted content to Decrypted/{content}/{content_id}.")
+    if os.path.isdir(out_path):
+        shutil.rmtree(out_path)
 
-def decrypt_eboot(zrif):
+    if not os.path.exists(os.path.join(in_path, "sce_pfs")):
+        status_cb("No encryption layer. Copying directly...")
+        shutil.copytree(in_path, out_path)
+        return out_path
+
+    os.makedirs(out_path, exist_ok=True)
+    status_cb("Decrypting PFS...")
+    
+    ret = subprocess.run([psvpfsparser(), "-i", in_path, "-o", out_path, "-z", zrif, "-f", "cma.henkaku.xyz"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    ret_str = str(ret.stdout) + str(ret.stderr)
+
+    if "invalid" in ret_str:
+        if os.path.isdir(out_path):
+            shutil.rmtree(out_path)
+        status_cb("[bold red]Header signature invalid (Bad zRIF?)[/bold red]")
+        return None
+            
+    elif "failed to find unicv.db" in ret_str:
+        if os.path.isdir(out_path):
+            shutil.rmtree(out_path)
+        status_cb("[bold red]Missing unicv.db[/bold red]")
+        return None
+    
+    return out_path
+
+def decrypt_eboot(zrif, target_folder, status_cb):
     os.makedirs("./tmp", exist_ok=True)
-    for root, dirs, files in os.walk("Decrypted"):
-        for folder in dirs:
-            folder_path = os.path.join(root, folder)
-            eboot_path = os.path.join(folder_path, "eboot.bin")
-            if os.path.exists(eboot_path) and not os.path.exists(folder_path + "/eboot_decrypted.bin"):
-                print(">    Decrypting eboot.bin")
-                subprocess.run([sys.executable, "util/zzzrif.py", zrif, "./tmp/work.bin"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                subprocess.run([sys.executable, "./util/self2elf.py", "-i", eboot_path, "-o", os.path.join(folder_path, "eboot_decrypted.bin"), "-k", "./tmp/work.bin"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                if os.path.isfile(os.path.join(folder_path, "eboot_decrypted.bin")):
-                    if os.path.exists("./util/__pycache__"):
-                        shutil.rmtree("./util/__pycache__")
-                    print(f">    Saved decrypted eboot.bin (eboot_decrypted.bin) to {folder_path}/eboot_decrypted.bin.")
-                else:
-                    print_exit("/!\\    eboot.bin couldn't be decrypted. Please check if you have all of the required modules installed.")
+    eboot_path = os.path.join(target_folder, "eboot.bin")
+    decrypted_path = os.path.join(target_folder, "eboot_decrypted.bin")
+    
+    unique_id = os.path.basename(target_folder)
+    work_bin = f"./tmp/work_{unique_id}.bin"
+
+    if os.path.exists(eboot_path) and not os.path.exists(decrypted_path):
+        status_cb("Decrypting eboot.bin...")
+        subprocess.run([sys.executable, "util/zzzrif.py", zrif, work_bin], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        subprocess.run([sys.executable, "./util/self2elf.py", "-i", eboot_path, "-o", decrypted_path, "-k", work_bin], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        
+        if not os.path.isfile(decrypted_path):
+            status_cb("[bold red]eboot decryption failed[/bold red]")
+            return False
+            
+        if os.path.exists(work_bin):
+            os.remove(work_bin)
+            
+    return True
+
+def process_item(task, status_callback, output_dir="./Decrypted", no_eboot=False):
+    folder, content_id, is_dlc, dlc_id, identifier = task
+    
+    zrif = get_zrif(content_id, is_dlc, status_cb=status_callback, dlc_id=dlc_id)
+    if not zrif:
+        return
+
+    if is_dlc:
+        out_path = decrypt_pfs(folder, content_id, zrif, dlc_id=dlc_id, status_cb=status_callback, output_dir=output_dir)
+        if out_path:
+            display_path = os.path.normpath(out_path)
+            status_callback(f"[bold green]✔ ({display_path})[/bold green]")
+    else:
+        out_path = decrypt_pfs(folder, content_id, zrif, status_cb=status_callback, output_dir=output_dir)
+        if out_path:
+            if not no_eboot:
+                eboot_success = decrypt_eboot(zrif, out_path, status_cb=status_callback)
+                if not eboot_success:
+                    return
+                    
+            display_path = os.path.normpath(out_path)
+            status_callback(f"[bold green]✔ ({display_path})[/bold green]")

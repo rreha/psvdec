@@ -44,6 +44,36 @@ def pack_license(content_id_str):
     data[0x10:0x10+len(cid_bytes)] = cid_bytes
     return data
 
+def parse_sfo(data):
+    if len(data) < 20 or data[:4] != b'\x00PSF':
+        return {}
+    
+    key_ofs, data_ofs, count = struct.unpack("<III", data[8:20])
+    
+    sfo_dict = {}
+    for i in range(count):
+        entry_ofs = 20 + (i * 16)
+        k_ofs, fmt, length, max_len, d_ofs = struct.unpack("<HHIII", data[entry_ofs:entry_ofs+16])
+        
+        key_start = key_ofs + k_ofs
+        key_end = data.find(b'\x00', key_start)
+        if key_end == -1: key_end = len(data)
+        key = data[key_start:key_end].decode('utf-8', errors='ignore')
+        
+        val_start = data_ofs + d_ofs
+        val_data = data[val_start:val_start+length]
+        
+        if fmt in (0x0004, 0x0204):
+            val = val_data.decode('utf-8', errors='ignore').rstrip('\x00')
+        elif fmt == 0x0404:
+            val = struct.unpack("<I", val_data)[0]
+        else:
+            val = val_data
+            
+        sfo_dict[key] = val
+        
+    return sfo_dict
+
 class NoPKG:
     def __init__(self, path):
         self.path = path
@@ -140,13 +170,17 @@ def main():
     parser.add_argument("type", choices=['ux', 'id'], help="Extraction structure: 'id' (/TitleID) or 'ux' (/[app/addcont/patch/...]/TitleID)")
     parser.add_argument("output_dir", nargs='?', default=".", help="Output directory")
     parser.add_argument("--license", help="zRIF string or klicensee")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Print detailed progress during extraction")
     
     args = parser.parse_args()
+    
+    vprint = print if args.verbose else lambda *a, **k: None
 
     if not os.path.exists(args.input):
         print(f"Error: {args.input} not found.")
         return 1
 
+    vprint(f"Opening {args.input}...")
     pkg = NoPKG(args.input)
     pkg.read_metadata()
     
@@ -154,18 +188,63 @@ def main():
     is_dlc = (pkg.metadata['content_type'] == 0x16)
     title_id = cid[7:16]
 
+    idx_offset = pkg.header['data_offset'] + pkg.metadata['index_table_offset']
+    index_table = pkg.read_decrypted(idx_offset, pkg.metadata['index_table_size'])
+    
+    num_items = pkg.header['item_count']
+    rec_size = 32
+    
+    is_patch = False
+    sfo_data = None
+    
+    temp_ptr = 0
+    for _ in range(num_items):
+        if temp_ptr + rec_size > len(index_table): break
+        r_name_off, r_name_sz, r_dat_off, r_dat_sz, _, _ = struct.unpack(">IIQQII", index_table[temp_ptr:temp_ptr+rec_size])
+        
+        rel_name_off = r_name_off - pkg.metadata['index_table_offset']
+        fname = index_table[rel_name_off : rel_name_off + r_name_sz].decode('utf-8')
+        
+        if fname == "sce_sys/changeinfo/changeinfo.xml" and not is_dlc:
+            is_patch = True
+            
+        if fname == "sce_sys/param.sfo":
+            abs_dat_off = pkg.header['data_offset'] + r_dat_off
+            sfo_buf = bytearray()
+            left = r_dat_sz
+            curr = abs_dat_off
+            while left > 0:
+                req = min(left, 65536)
+                sfo_buf.extend(pkg.read_decrypted(curr, req))
+                curr += req
+                left -= req
+            sfo_data = bytes(sfo_buf)
+            
+        temp_ptr += rec_size
+
+    app_title = "Unknown Title"
+    app_ver = "Unknown"
+    if sfo_data:
+        sfo_dict = parse_sfo(sfo_data)
+        app_title = sfo_dict.get("TITLE", app_title)
+        app_ver = sfo_dict.get("APP_VER", app_ver)
+
     if args.type == 'id':
         final_out_dir = os.path.join(args.output_dir, title_id)
-
     else:
         if is_dlc:
             dlc_id = cid[20:]
             final_out_dir = os.path.join(args.output_dir, "addcont", title_id, dlc_id)
+        elif is_patch:
+            final_out_dir = os.path.join(args.output_dir, "patch", title_id)
         else:
             final_out_dir = os.path.join(args.output_dir, "app", title_id)
 
     os.makedirs(final_out_dir, exist_ok=True)
-    print(f"Extracting [{cid}] to {final_out_dir}")
+    
+    print(f"Title:   {app_title}")
+    print(f"Version: {app_ver}")
+    print(f"Target:  {final_out_dir}")
 
     head_len = pkg.header['data_offset'] + pkg.metadata['index_table_size']
     pkg.stream.seek(0)
@@ -173,17 +252,12 @@ def main():
     pkg_dir = os.path.join(final_out_dir, "sce_sys", "package")
     os.makedirs(pkg_dir, exist_ok=True)
     
+    vprint("Writing head.bin...")
     with open(os.path.join(pkg_dir, "head.bin"), 'wb') as f:
         f.write(pkg.stream.read(head_len))
 
-    idx_offset = pkg.header['data_offset'] + pkg.metadata['index_table_offset']
-    index_table = pkg.read_decrypted(idx_offset, pkg.metadata['index_table_size'])
-    
-    num_items = pkg.header['item_count']
     ptr = 0
-    rec_size = 32
-    
-    print(f"Unpacking {num_items} files...")
+    print(f"\nUnpacking {num_items} items...")
     for _ in range(num_items):
         if ptr + rec_size > len(index_table): break
         
@@ -196,8 +270,10 @@ def main():
         
         item_type = r_flags & 0xFF
         if item_type in [4, 18]:
+            vprint(f" > [directory]  {fname}")
             os.makedirs(file_path, exist_ok=True)
         else:
+            vprint(f" > [file] {fname}")
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
             
             with open(file_path, 'wb') as f_out:
@@ -214,19 +290,22 @@ def main():
 
     tail_offset = pkg.header['data_offset'] + pkg.header['data_size']
     tail_len = pkg.header['total_size'] - tail_offset
-    pkg.stream.seek(tail_offset)
-    with open(os.path.join(pkg_dir, "tail.bin"), 'wb') as f:
-        f.write(pkg.stream.read(tail_len))
+    if tail_len > 0:
+        vprint("Writing tail.bin...")
+        pkg.stream.seek(tail_offset)
+        with open(os.path.join(pkg_dir, "tail.bin"), 'wb') as f:
+            f.write(pkg.stream.read(tail_len))
 
     if args.license:
         rif_bytes = handle_license(args.license, cid)
         if rif_bytes:
+            vprint("Writing work.bin license...")
             with open(os.path.join(pkg_dir, "work.bin"), 'wb') as f:
                 f.write(rif_bytes)
             print("Generated work.bin")
 
     pkg.close()
-    print("Done.")
+    print("\nDone.")
 
 if __name__ == "__main__":
     main()
