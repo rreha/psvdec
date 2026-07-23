@@ -1,4 +1,3 @@
-openpyxl
 pycryptodome
 rich
 six

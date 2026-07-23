@@ -52,7 +52,7 @@ def fetch_nps_database(is_dlc):
     json_file = "dlc.json" if is_dlc else "games.json"
     url = "https://nopaystation.com/tsv/PSV_DLCS.tsv" if is_dlc else "https://nopaystation.com/tsv/PSV_GAMES.tsv"
     
-    console.print(f"[bold yellow]> Missing {json_file}. Downloading latest TSV from NoPayStation...[/bold yellow]")
+    console.print(f"[bold yellow]> Downloading latest TSV from NoPayStation...[/bold yellow]")
     
     try:
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
@@ -88,15 +88,15 @@ def fetch_nps_database(is_dlc):
         with open(json_file, 'w', encoding='utf-8') as f:
             json.dump(db, f, indent=4)
             
-        console.print(f"[bold green]> Successfully converted and saved {json_file}.[/bold green]\n")
+        console.print(f"[bold green]> Successfully saved zRIF database {json_file}.[/bold green]\n")
         
     except Exception as e:
         print_exit(f"/!\\ Failed to download or parse {url}: {e}")
 
-def ensure_databases():
-    if not os.path.exists("games.json"):
+def ensure_databases(force_update=False):
+    if force_update or not os.path.exists("games.json"):
         fetch_nps_database(is_dlc=False)
-    if not os.path.exists("dlc.json"):
+    if force_update or not os.path.exists("dlc.json"):
         fetch_nps_database(is_dlc=True)
 
 def extract_pkg(pkg):
