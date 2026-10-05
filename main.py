@@ -60,8 +60,8 @@ if __name__ == "__main__":
 
         if pkgs_to_extract:
             console.print(f"[bold white]> Extracting {len(pkgs_to_extract)} PKG file(s)...[/bold white]")
-            for pkg in pkgs_to_extract:
-                extract_pkg(pkg, temp_dir)
+            with ThreadPoolExecutor() as extract_exec:
+                extract_exec.map(lambda p: extract_pkg(p, temp_dir), pkgs_to_extract)
                 
             for item in os.listdir(temp_dir):
                     full_path = os.path.join(temp_dir, item)
@@ -114,11 +114,10 @@ if __name__ == "__main__":
                         update_status(task[4], f"[bold red]Crash: {str(e)}[/bold red]")
                         live.update(generate_table())
 
-                with ThreadPoolExecutor(max_workers=4) as executor:
+                with ThreadPoolExecutor() as executor:
                     list(executor.map(worker, tasks_queue))
 
             console.print("\n[bold green]All operations completed![/bold green]")
 
     except KeyboardInterrupt:
         console.print("\n[bold red]/!\\ Process aborted by user. Cleaning up...[/bold red]")
-        
