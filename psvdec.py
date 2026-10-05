@@ -6,9 +6,15 @@ import json
 import urllib.request
 import csv
 import io
-from rich.console import Console
 import platform
 import threading
+from contextlib import redirect_stdout
+from rich.console import Console
+
+sys.path.insert(0, os.path.abspath('./util'))
+import nopkg
+import zzzrif
+import self2elf
 
 console = Console()
 _db_cache = {}
@@ -101,8 +107,13 @@ def ensure_databases(force_update=False):
         fetch_nps_database(is_dlc=True)
 
 def extract_pkg(pkg, temp_dir):
-    subprocess.run([sys.executable, "./util/nopkg.py", pkg, "ux", temp_dir], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-
+    try:
+        nopkg.main([pkg, "ux", temp_dir], silent=True)
+    except SystemExit:
+        pass
+    except Exception as e:
+        console.print(f"[bold red]nopkg error while extracting {os.path.basename(pkg)}: {str(e)}[/bold red]")
+            
 def detect_content(i):
     basename = os.path.basename(i)
     if basename == "addcont":
@@ -212,9 +223,14 @@ def decrypt_eboot(zrif, target_folder, status_cb, temp_dir):
 
     if os.path.exists(eboot_path) and not os.path.exists(decrypted_path):
         status_cb("Decrypting eboot.bin...")
-        subprocess.run([sys.executable, "util/zzzrif.py", zrif, work_bin], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        subprocess.run([sys.executable, "./util/self2elf.py", "-i", eboot_path, "-o", decrypted_path, "-k", work_bin], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        
+        try:
+            zzzrif.make_rif(zrif, work_bin, silent=True)
+            self2elf.main(["-i", eboot_path, "-o", decrypted_path, "-k", work_bin])
+        except SystemExit:
+            pass
+        except Exception:
+            pass
+
         if not os.path.isfile(decrypted_path):
             status_cb("[bold red]eboot decryption failed[/bold red]")
             return False

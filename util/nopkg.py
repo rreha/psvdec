@@ -164,7 +164,9 @@ def handle_license(encoded_key, target_cid):
             print(f"Warning: License Content ID {cid} mismatch package {target_cid}")
     return rif
 
-def main():
+def main(cmd_args=None, silent=False):
+    out = lambda *a, **k: None if silent else print(*a, **k)
+
     parser = argparse.ArgumentParser(description="NoPKG - PS Vita PKG Extractor")
     parser.add_argument("input", help="Input PKG file")
     parser.add_argument("type", choices=['ux', 'id'], help="Extraction structure: 'id' (/TitleID) or 'ux' (/[app/addcont/patch/...]/TitleID)")
@@ -172,12 +174,12 @@ def main():
     parser.add_argument("--license", help="zRIF string or klicensee")
     parser.add_argument("-v", "--verbose", action="store_true", help="Print detailed progress during extraction")
     
-    args = parser.parse_args()
+    args = parser.parse_args(cmd_args)
     
-    vprint = print if args.verbose else lambda *a, **k: None
+    vprint = out if (args.verbose and not silent) else lambda *a, **k: None
 
     if not os.path.exists(args.input):
-        print(f"Error: {args.input} not found.")
+        out(f"Error: {args.input} not found.")
         return 1
 
     vprint(f"Opening {args.input}...")
@@ -242,9 +244,9 @@ def main():
 
     os.makedirs(final_out_dir, exist_ok=True)
     
-    print(f"Title:   {app_title}")
-    print(f"Version: {app_ver}")
-    print(f"Target:  {final_out_dir}")
+    out(f"Title:   {app_title}")
+    out(f"Version: {app_ver}")
+    out(f"Target:  {final_out_dir}")
 
     head_len = pkg.header['data_offset'] + pkg.metadata['index_table_size']
     pkg.stream.seek(0)
@@ -257,7 +259,7 @@ def main():
         f.write(pkg.stream.read(head_len))
 
     ptr = 0
-    print(f"\nUnpacking {num_items} items...")
+    out(f"\nUnpacking {num_items} items...")
     for _ in range(num_items):
         if ptr + rec_size > len(index_table): break
         
@@ -302,10 +304,10 @@ def main():
             vprint("Writing work.bin license...")
             with open(os.path.join(pkg_dir, "work.bin"), 'wb') as f:
                 f.write(rif_bytes)
-            print("Generated work.bin")
+            out("Generated work.bin")
 
     pkg.close()
-    print("\nDone.")
+    out("\nDone.")
 
 if __name__ == "__main__":
     main()

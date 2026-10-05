@@ -125,19 +125,21 @@ def self2elf(inf, outf=open(os.devnull, "w"), klictxt='0', silent=False, ignore_
         outf.write(dat)
         at += len(dat)
 
-if __name__ == "__main__":
+def main(cmd_args=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("-i", "--inputfile", help="input file name", type=str)
     parser.add_argument("-o", "--outputfile", help="output file name", type=str)
     parser.add_argument("-k", "--keyriffile", help="NoNpdrm RIF file name", type=str)
-    args=parser.parse_args()
+    args=parser.parse_args(cmd_args)
+    
     with open(args.inputfile, "rb") as inf:
         with open(args.outputfile, "wb") as outf:
             if args.keyriffile:
                 with open(args.keyriffile, "rb") as rif:
                     lic = SceRIF(rif.read(SceRIF.Size))
-                    self2elf(inf, outf, lic.klicense)
+                    self2elf(inf, outf, lic.klicense, silent=True)
             else:
-                self2elf(inf, outf, 0)
-                        
-                    
+                self2elf(inf, outf, 0, silent=True)
+
+if __name__ == "__main__":
+    main()
