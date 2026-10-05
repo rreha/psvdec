@@ -2,6 +2,7 @@ import os
 import sys
 import shutil
 import argparse
+import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from rich.live import Live
 from rich.table import Table
@@ -52,18 +53,18 @@ if __name__ == "__main__":
         if not args.inputs:
             sys.exit(0)
 
-        inputs = args.inputs
-        pkgs_to_extract = [i for i in inputs if os.path.isfile(i) and i.lower().endswith(".pkg")]
-        folders_to_process = [i for i in inputs if os.path.isdir(i)]
+        with tempfile.TemporaryDirectory(prefix="psvdec_") as temp_dir:
+            inputs = args.inputs
+            pkgs_to_extract = [i for i in inputs if os.path.isfile(i) and i.lower().endswith(".pkg")]
+            folders_to_process = [i for i in inputs if os.path.isdir(i)]
 
         if pkgs_to_extract:
             console.print(f"[bold white]> Extracting {len(pkgs_to_extract)} PKG file(s)...[/bold white]")
             for pkg in pkgs_to_extract:
-                extract_pkg(pkg)
+                extract_pkg(pkg, temp_dir)
                 
-            if os.path.exists("./tmp/"):
-                for item in os.listdir("./tmp/"):
-                    full_path = os.path.join("./tmp", item)
+            for item in os.listdir(temp_dir):
+                    full_path = os.path.join(temp_dir, item)
                     if os.path.isdir(full_path):
                         folders_to_process.append(full_path)
 
@@ -106,7 +107,8 @@ if __name__ == "__main__":
                             task, 
                             status_callback=lambda msg: (update_status(task[4], msg), live.update(generate_table())),
                             output_dir=args.out,
-                            no_eboot=args.no_eboot
+                            no_eboot=args.no_eboot,
+                            temp_dir=temp_dir
                         )
                     except Exception as e:
                         update_status(task[4], f"[bold red]Crash: {str(e)}[/bold red]")
@@ -119,7 +121,4 @@ if __name__ == "__main__":
 
     except KeyboardInterrupt:
         console.print("\n[bold red]/!\\ Process aborted by user. Cleaning up...[/bold red]")
-
-    finally:
-        if os.path.exists("./tmp"):
-            shutil.rmtree("./tmp")
+        

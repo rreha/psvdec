@@ -1,3 +1,7 @@
+**/.DS_Store
+dlc.json
+games.json
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

@@ -20,8 +20,6 @@ def pause_cli():
 def print_exit(txt):
     console.print(f"[bold red]{txt}[/bold red]")
     pause_cli()
-    if os.path.isdir("./tmp"):
-        shutil.rmtree("./tmp")
     sys.exit()
 
 def clear_screen():
@@ -99,9 +97,8 @@ def ensure_databases(force_update=False):
     if force_update or not os.path.exists("dlc.json"):
         fetch_nps_database(is_dlc=True)
 
-def extract_pkg(pkg):
-    os.makedirs("./tmp", exist_ok=True)
-    subprocess.run([sys.executable, "util/nopkg.py", pkg, "ux", "./tmp/"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+def extract_pkg(pkg, temp_dir):
+    subprocess.run([sys.executable, "./util/nopkg.py", pkg, "ux", temp_dir], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
 def detect_content(i):
     basename = os.path.basename(i)
@@ -200,13 +197,12 @@ def decrypt_pfs(i, content_id, zrif, dlc_id=None, status_cb=None, output_dir="./
     
     return out_path
 
-def decrypt_eboot(zrif, target_folder, status_cb):
-    os.makedirs("./tmp", exist_ok=True)
+def decrypt_eboot(zrif, target_folder, status_cb, temp_dir):
     eboot_path = os.path.join(target_folder, "eboot.bin")
     decrypted_path = os.path.join(target_folder, "eboot_decrypted.bin")
     
     unique_id = os.path.basename(target_folder)
-    work_bin = f"./tmp/work_{unique_id}.bin"
+    work_bin = os.path.join(temp_dir, f"work_{unique_id}.bin")
 
     if os.path.exists(eboot_path) and not os.path.exists(decrypted_path):
         status_cb("Decrypting eboot.bin...")
@@ -222,7 +218,7 @@ def decrypt_eboot(zrif, target_folder, status_cb):
             
     return True
 
-def process_item(task, status_callback, output_dir="./Decrypted", no_eboot=False):
+def process_item(task, status_callback, output_dir="./Decrypted", no_eboot=False, temp_dir=None):
     folder, content_id, is_dlc, dlc_id, identifier = task
     
     zrif = get_zrif(content_id, is_dlc, status_cb=status_callback, dlc_id=dlc_id)
@@ -238,7 +234,7 @@ def process_item(task, status_callback, output_dir="./Decrypted", no_eboot=False
         out_path = decrypt_pfs(folder, content_id, zrif, status_cb=status_callback, output_dir=output_dir)
         if out_path:
             if not no_eboot:
-                eboot_success = decrypt_eboot(zrif, out_path, status_cb=status_callback)
+                eboot_success = decrypt_eboot(zrif, out_path, status_cb=status_callback, temp_dir=temp_dir)
                 if not eboot_success:
                     return
                     
