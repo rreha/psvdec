@@ -34,8 +34,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="psvdec ~ PS Vita Content Decryptor")
     parser.add_argument("inputs", nargs="*", help="PS Vita .pkg files or folders (app/patch/addcont)")
     parser.add_argument("-o", "--out", default="./Decrypted", help="Output directory for decrypted content (default: ./Decrypted)")
-    parser.add_argument("--no-eboot", action="store_true", help="Disable eboot.bin decryption")
-    parser.add_argument("--update-db", action="store_true", help="Force update of zRIF databases")
+    parser.add_argument("-n", "--no-eboot", action="store_true", help="Disable eboot.bin decryption")
+    parser.add_argument("-u", "--update-db", action="store_true", help="Force update of zRIF databases")
     args = parser.parse_args()
 
     if not args.inputs and not args.update_db:
@@ -53,7 +53,8 @@ if __name__ == "__main__":
         if not args.inputs:
             sys.exit(0)
 
-        with tempfile.TemporaryDirectory(prefix="psvdec_") as temp_dir:
+        os.makedirs(args.out, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix=".psvdec_tmp_", dir=args.out) as temp_dir:
             inputs = args.inputs
             pkgs_to_extract = [i for i in inputs if os.path.isfile(i) and i.lower().endswith(".pkg")]
             folders_to_process = [i for i in inputs if os.path.isdir(i)]

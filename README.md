@@ -22,13 +22,13 @@ pip install -r ./requirements.txt
 python main.py [inputs ...] [options]
 ```
 
-| Argument       | Description                                                                        |
-|----------------|------------------------------------------------------------------------------------|
-| `[inputs ...]` | One or more PS Vita .pkg files or extracted folders (app, patch, addcont)          |
-| `-o / --out`   | Specify a custom output directory for the decrypted content (default: ./Decrypted) |
-| `--no-eboot`   | Disable eboot.bin decryption                                                       |
-| `--update-db`  | Force the script to download the latest zRIF databases from NoPayStation           |
-| `-h`, `--help` | Show the help message                                                              |
+| Argument          | Description                                                                        |
+|-------------------|------------------------------------------------------------------------------------|
+| `[inputs ...]`    | One or more PS Vita .pkg files or extracted folders (app, patch, addcont)          |
+| `-o / --out`      | Specify a custom output directory for the decrypted content (default: ./Decrypted) |
+| `-n / --no-eboot` | Disable eboot.bin decryption                                                       |
+| `-u / --update-db`| Force the script to download the latest zRIF databases from NoPayStation           |
+| `-h / --help`     | Show the help message                                                              |
 
 
 # Binary Sources

@@ -242,6 +242,14 @@ def decrypt_eboot(zrif, target_folder, status_cb, temp_dir):
 
 def process_item(task, status_callback, output_dir="./Decrypted", no_eboot=False, temp_dir=None):
     folder, content_id, is_dlc, dlc_id, identifier = task
+
+    content = os.path.basename(folder)
+    check_path = os.path.join(output_dir, content, content_id, dlc_id) if is_dlc else os.path.join(output_dir, content, content_id)
+    
+    is_fully_decrypted = os.path.exists(check_path) and (is_dlc or no_eboot or os.path.exists(os.path.join(check_path, "eboot_decrypted.bin")))
+    if is_fully_decrypted:
+        status_callback(f"[bold yellow]Skipped (Already Decrypted)[/bold yellow]")
+        return
     
     zrif = get_zrif(content_id, is_dlc, status_cb=status_callback, dlc_id=dlc_id)
     if not zrif:
