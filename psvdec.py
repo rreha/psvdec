@@ -8,8 +8,11 @@ import csv
 import io
 from rich.console import Console
 import platform
+import threading
 
 console = Console()
+_db_cache = {}
+_db_cache_lock = threading.Lock()
 
 def pause_cli():
     if sys.platform.startswith("win32"):
@@ -133,13 +136,16 @@ def get_zrif(content_id, is_dlc, status_cb, dlc_id=None):
     json_file = "dlc.json" if is_dlc else "games.json"
     missing_values = (None, '-', 'MISSING')
     
-    try:
-        with open(json_file, 'r', encoding='utf-8') as f:
-            db = json.load(f)
-    except Exception:
-        status_cb(f"[bold red]Error reading {json_file}[/bold red]")
-        return None
-
+    with _db_cache_lock:
+        if json_file not in _db_cache:
+            try:
+                with open(json_file, 'r', encoding='utf-8') as f:
+                    _db_cache[json_file] = json.load(f)
+            except Exception:
+                status_cb(f"[bold red]Error reading {json_file}[/bold red]")
+                return None
+                
+    db = _db_cache[json_file]
     zrif = None
 
     if is_dlc and dlc_id:
