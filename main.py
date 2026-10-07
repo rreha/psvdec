@@ -42,13 +42,11 @@ if __name__ == "__main__":
         print_exit("/!\\ Please specify at least one PS Vita .pkg file or folder.\nUse -h for help.")
 
     try:
-        if os.path.isdir("./tmp"):
-            shutil.rmtree("./tmp")
-
         clear_screen()
         console.print("[bold medium_purple3]psvdec ~ PS Vita Content Decryptor ~ https://github.com/rreha/psvdec[/bold medium_purple3]\n")
 
         ensure_databases(force_update=args.update_db)
+        verify_binaries()
 
         if not args.inputs:
             sys.exit(0)

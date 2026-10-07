@@ -106,6 +106,26 @@ def ensure_databases(force_update=False):
     if force_update or not os.path.exists("dlc.json"):
         fetch_nps_database(is_dlc=True)
 
+def verify_binaries():
+    parser_path = psvpfsparser()
+    
+    if not os.path.exists(parser_path):
+        print_exit(f"/!\\ Error: Missing binary at {parser_path}\nPlease ensure the 'bin' folder is intact.")
+        
+    if sys.platform != "win32":
+        if not os.access(parser_path, os.X_OK):
+            try:
+                os.chmod(parser_path, 0o755)
+            except Exception as e:
+                print_exit(f"/!\\ Error: Could not set executable permissions for {parser_path}: {e}")
+                
+        if sys.platform == "darwin":
+            try:
+                subprocess.run(["xattr", "-d", "com.apple.quarantine", parser_path], 
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except Exception:
+                pass
+
 def extract_pkg(pkg, temp_dir):
     try:
         nopkg.main([pkg, "ux", temp_dir], silent=True)
@@ -197,8 +217,15 @@ def decrypt_pfs(i, content_id, zrif, dlc_id=None, status_cb=None, output_dir="./
     os.makedirs(out_path, exist_ok=True)
     status_cb("Decrypting PFS...")
     
-    ret = subprocess.run([psvpfsparser(), "-i", in_path, "-o", out_path, "-z", zrif, "-f", "cma.henkaku.xyz"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    ret_str = str(ret.stdout) + str(ret.stderr)
+    try:
+        ret = subprocess.run([psvpfsparser(), "-i", in_path, "-o", out_path, "-z", zrif, "-f", "cma.henkaku.xyz"], 
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        ret_str = ret.stdout + ret.stderr
+
+    except Exception as e:
+        if os.path.isdir(out_path): shutil.rmtree(out_path)
+        status_cb(f"[bold red]Failed to launch psvpfsparser: {str(e)}[/bold red]")
+        return None
 
     if "invalid" in ret_str:
         if os.path.isdir(out_path):
@@ -210,6 +237,16 @@ def decrypt_pfs(i, content_id, zrif, dlc_id=None, status_cb=None, output_dir="./
         if os.path.isdir(out_path):
             shutil.rmtree(out_path)
         status_cb("[bold red]Missing unicv.db[/bold red]")
+        return None
+
+    elif ret.returncode != 0:
+        if os.path.isdir(out_path): shutil.rmtree(out_path)
+        status_cb(f"[bold red]psvpfsparser crashed: {ret_str.strip()}[/bold red]")
+        return None
+
+    if not os.listdir(out_path):
+        if os.path.isdir(out_path): shutil.rmtree(out_path)
+        status_cb("[bold red]psvpfsparser failed to decrypt PFS (empty output)[/bold red]")
         return None
     
     return out_path
@@ -245,8 +282,9 @@ def process_item(task, status_callback, output_dir="./Decrypted", no_eboot=False
 
     content = os.path.basename(folder)
     check_path = os.path.join(output_dir, content, content_id, dlc_id) if is_dlc else os.path.join(output_dir, content, content_id)
+    has_files = os.path.exists(check_path) and len(os.listdir(check_path)) > 0
     
-    is_fully_decrypted = os.path.exists(check_path) and (is_dlc or no_eboot or os.path.exists(os.path.join(check_path, "eboot_decrypted.bin")))
+    is_fully_decrypted = has_files and (is_dlc or no_eboot or os.path.exists(os.path.join(check_path, "eboot_decrypted.bin")))
     if is_fully_decrypted:
         status_callback(f"[bold yellow]Skipped (Already Decrypted)[/bold yellow]")
         return

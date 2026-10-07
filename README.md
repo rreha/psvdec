@@ -33,14 +33,13 @@ python main.py [inputs ...] [options]
 
 # Binary Sources
 ## psvpfsparser
-Windows and Ubuntu binaries were taken from the [psvpfstools release](https://github.com/motoharu-gosuto/psvpfstools/releases/latest).<br/>
-The MacOS binaries were built by me using [my psvpfstools fork](https://github.com/rreha/psvpfstools).
+Binaries were built using GitHub Actions on my [psvpfstools fork](https://github.com/rreha/psvpfstools/tree/actions).
 
 # Credits
 Contributors of NoPayStation for **[NoPayStation](https://nopaystation.com/)**.<br>
 st4rk for **[PkgDecrypt](https://github.com/st4rk/PkgDecrypt)**.<br>
 motoharu-gosoto for **[psvpfstools](https://github.com/motoharu-gosuto/psvpfstools)**.<br>
-uyjulian for the **[fork of psvpfstools](https://github.com/uyjulian/psvpfstools)**.<br>
+olebeck for the **[fork of psvpfstools](https://github.com/olebeck/psvpfstools)**.<br>
 Team Molecule for the **[sceutils](https://github.com/TeamMolecule/sceutils)**.<br>
 mathieulh for the **[sceutils fork with proper keys](https://github.com/mathieulh/sceutils)**.<br>
 Yoti for the **[fixed fork of mathieulh's sceutils fork](https://github.com/RealYoti/sceutils/tree/master)**.<br>
