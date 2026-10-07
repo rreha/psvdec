@@ -1,7 +1,10 @@
+# psvdec
 **/.DS_Store
 Decrypted
 dlc.json
+dlc.json.meta
 games.json
+games.json.meta
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

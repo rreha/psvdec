@@ -31,7 +31,7 @@ def generate_table():
     return table
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="psvdec ~ PS Vita Content Decryptor")
+    parser = argparse.ArgumentParser(description="psvdec ~ PS Vita Content Decryptor ~ https://github.com/rreha/psvdec")
     parser.add_argument("inputs", nargs="*", help="PS Vita .pkg files or folders (app/patch/addcont)")
     parser.add_argument("-o", "--out", default="./Decrypted", help="Output directory for decrypted content (default: ./Decrypted)")
     parser.add_argument("-n", "--no-eboot", action="store_true", help="Disable eboot.bin decryption")
@@ -39,7 +39,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if not args.inputs and not args.update_db:
-        print_exit("/!\\ Please specify at least one PS Vita .pkg file or folder.\nUse -h for help.")
+        print_exit("/!\\ Please specify at least one PS Vita .pkg file or folder.\n\nUse -h for help.\n")
 
     try:
         clear_screen()

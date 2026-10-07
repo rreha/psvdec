@@ -55,15 +55,26 @@ def psvpfsparser():
     elif sys.platform.startswith("linux"):
         return "./bin/ubuntu64/psvpfsparser"
 
-def fetch_nps_database(is_dlc):
+def fetch_nps_database(is_dlc, force_update=False):
     json_file = "dlc.json" if is_dlc else "games.json"
+    meta_file = f"{json_file}.meta"
     url = "https://nopaystation.com/tsv/PSV_DLCS.tsv" if is_dlc else "https://nopaystation.com/tsv/PSV_GAMES.tsv"
     
-    console.print(f"[bold yellow]> Downloading latest TSV from NoPayStation...[/bold yellow]")
-    
     try:
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req) as response:
+        req_head = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'}, method='HEAD')
+        with urllib.request.urlopen(req_head) as response:
+            server_version = response.headers.get('ETag') or response.headers.get('Last-Modified')
+
+        if not force_update and os.path.exists(json_file) and os.path.exists(meta_file):
+            with open(meta_file, 'r', encoding='utf-8') as f:
+                local_version = f.read().strip()
+            
+            if local_version == server_version and server_version is not None:
+                return 
+                
+        console.print(f"[bold yellow]> Downloading update for {json_file}...[/bold yellow]")
+        req_get = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req_get) as response:
             tsv_data = response.read().decode('utf-8')
             
         db = {}
@@ -95,16 +106,21 @@ def fetch_nps_database(is_dlc):
         with open(json_file, 'w', encoding='utf-8') as f:
             json.dump(db, f, indent=4)
             
-        console.print(f"[bold green]> Successfully saved zRIF database {json_file}.[/bold green]\n")
+        if server_version:
+            with open(meta_file, 'w', encoding='utf-8') as f:
+                f.write(server_version)
+                
+        console.print(f"[bold green]> Successfully updated {json_file}.[/bold green]\n")
         
     except Exception as e:
-        print_exit(f"/!\\ Failed to download or parse {url}: {e}")
+        if not os.path.exists(json_file):
+            print_exit(f"/!\\ Failed to download {url}: {e}")
+        else:
+            console.print(f"[bold yellow]> Warning: Could not check for database updates.[/bold red]")
 
 def ensure_databases(force_update=False):
-    if force_update or not os.path.exists("games.json"):
-        fetch_nps_database(is_dlc=False)
-    if force_update or not os.path.exists("dlc.json"):
-        fetch_nps_database(is_dlc=True)
+    fetch_nps_database(is_dlc=False, force_update=force_update)
+    fetch_nps_database(is_dlc=True, force_update=force_update)
 
 def verify_binaries():
     parser_path = psvpfsparser()
